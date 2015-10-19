@@ -14,7 +14,7 @@
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>Endjin.CucumberJs.TestAdapter.VSIX</RootNamespace>
-    <AssemblyName>Endjin.CucumberJs.TestAdapter.VSIX</AssemblyName>
+    <AssemblyName>Endjin.CucumberJs.TestAdapter</AssemblyName>
     <TargetFrameworkVersion>v4.6</TargetFrameworkVersion>
     <GeneratePkgDefFile>false</GeneratePkgDefFile>
     <IncludeAssemblyInVSIXContainer>false</IncludeAssemblyInVSIXContainer>
