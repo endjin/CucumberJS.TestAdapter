@@ -4,6 +4,10 @@
     <Identity Id="Endjin.CucumberJs.TestAdapter.VSIX.c11f4ac8-58a4-4b97-a94f-d93a32a0cafe" Version="1.0" Language="en-US" Publisher="Endjin Ltd" />
     <DisplayName>Endjin.CucumberJs.TestAdapter</DisplayName>
     <Description xml:space="preserve">Visual Studio 2015 Test Adapter for CucumberJS tests</Description>
+    <MoreInfo>https://wp.me/p19Amb-edu</MoreInfo>
+    <License>LICENSE</License>
+    <GettingStartedGuide>README.md</GettingStartedGuide>
+    <ReleaseNotes>ReleaseNotes.txt</ReleaseNotes>
   </Metadata>
   <Installation>
     <InstallationTarget Id="Microsoft.VisualStudio.Community" Version="[14.0,15.0]" />
