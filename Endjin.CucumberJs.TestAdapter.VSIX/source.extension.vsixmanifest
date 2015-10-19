@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
+  <Metadata>
+    <Identity Id="Endjin.CucumberJs.TestAdapter.VSIX.c11f4ac8-58a4-4b97-a94f-d93a32a0cafe" Version="1.0" Language="en-US" Publisher="Endjin Ltd" />
+    <DisplayName>Endjin.CucumberJs.TestAdapter</DisplayName>
+    <Description xml:space="preserve">Visual Studio 2015 Test Adapter for CucumberJS tests</Description>
+  </Metadata>
+  <Installation>
+    <InstallationTarget Id="Microsoft.VisualStudio.Community" Version="[14.0,15.0]" />
+    <InstallationTarget Version="[14.0,15.0)" Id="Microsoft.VisualStudio.Pro" />
+    <InstallationTarget Version="[14.0,15.0)" Id="Microsoft.VisualStudio.Enterprise" />
+  </Installation>
+  <Dependencies>
+    <Dependency Id="Microsoft.Framework.NDP" DisplayName="Microsoft .NET Framework" d:Source="Manual" Version="4.5" />
+  </Dependencies>
+  <Assets>
+    <Asset Type="Microsoft.VisualStudio.MefComponent" d:Source="Project" d:ProjectName="Endjin.CucumberJs.TestAdapter" Path="|Endjin.CucumberJs.TestAdapter|" />
+    <Asset Type="UnitTestExtension" d:Source="Project" d:ProjectName="Endjin.CucumberJs.TestAdapter" Path="|Endjin.CucumberJs.TestAdapter|" />
+  </Assets>
+</PackageManifest>
