@@ -110,7 +110,7 @@
 
         private static bool HasTestFileExtension(string path)
         {
-            return path.EndsWith("feature");
+            return path.EndsWith("cucumber");
         }
 
         // Fire Events to Notify testcontainerdiscoverer listeners that containers have changed.

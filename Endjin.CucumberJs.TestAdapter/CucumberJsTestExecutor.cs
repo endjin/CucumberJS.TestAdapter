@@ -38,14 +38,18 @@
 
                 var result = new TestResult(test);
 
+                var target = System.IO.Path.ChangeExtension(test.Source, ".feature");
+
                 try
                 {
+                    System.IO.File.Copy(test.Source, target);
+
                     var appDataPath = Environment.GetEnvironmentVariable("APPDATA");
                     var nodePath = System.IO.Path.Combine(appDataPath, "npm");
                     var cucumberPath = System.IO.Path.Combine(nodePath, "node_modules\\cucumber\\bin\\cucumber.js");
                     System.Diagnostics.ProcessStartInfo procStartInfo = runContext.IsBeingDebugged ?
-                        new System.Diagnostics.ProcessStartInfo("node", $"--debug=5858 \"{cucumberPath}\" \"{test.Source}:{test.LineNumber}\" -f json") :
-                        new System.Diagnostics.ProcessStartInfo("node", $"\"{cucumberPath}\" \"{test.Source}:{test.LineNumber}\" -f json");
+                        new System.Diagnostics.ProcessStartInfo("node", $"--debug=5858 \"{cucumberPath}\" \"{target}:{test.LineNumber}\" -f json") :
+                        new System.Diagnostics.ProcessStartInfo("node", $"\"{cucumberPath}\" \"{target}:{test.LineNumber}\" -f json");
 
                     // The following commands are needed to redirect the standard output.
                     // This means that it will be redirected to the Process.StandardOutput StreamReader.
@@ -110,6 +114,10 @@
                 {
                     result.Outcome = TestOutcome.Failed;
                     result.ErrorMessage = ex.Message + ex.StackTrace;
+                }
+                finally
+                {
+                    System.IO.File.Delete(target);
                 }
 
                 frameworkHandle.RecordResult(result);

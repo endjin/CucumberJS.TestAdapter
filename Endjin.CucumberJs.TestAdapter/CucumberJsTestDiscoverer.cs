@@ -10,7 +10,7 @@
     using Microsoft.VisualStudio.TestPlatform.ObjectModel.Adapter;
 
     [DefaultExecutorUri(CucumberJsTestExecutor.ExecutorUriString)]
-    [FileExtension(".feature")]
+    [FileExtension(".cucumber")]
     public class CucumberJsTestDiscoverer : ITestDiscoverer
     {
         public static IEnumerable<TestCase> GetTests(IEnumerable<string> sourceFiles, ITestCaseDiscoverySink discoverySink, Microsoft.VisualStudio.TestPlatform.ObjectModel.Logging.IMessageLogger logger)
