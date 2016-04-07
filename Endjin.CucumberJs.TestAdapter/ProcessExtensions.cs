@@ -91,7 +91,7 @@
                         ref processInfoB,
                         (uint)Marshal.SizeOf(processInfoB),
                         out bytesWritten); // == 0 is OK
-                    if (0 != ntStatus)
+                    if (ntStatus != 0)
                     { // fail?
                         continue;
                     }
@@ -142,7 +142,7 @@
                 (uint)Marshal.SizeOf(processInfoB),
                 out bytesWritten); // == 0 is OK
             CloseHandle(hProcess);
-            if (0 != ntStatus)
+            if (ntStatus != 0)
             {
                 Debug.Assert(false, "break always");
                 return false;
