@@ -8,12 +8,13 @@
     using Gherkin.Ast;
     using Microsoft.VisualStudio.TestPlatform.ObjectModel;
     using Microsoft.VisualStudio.TestPlatform.ObjectModel.Adapter;
+    using Microsoft.VisualStudio.TestPlatform.ObjectModel.Logging;
 
     [DefaultExecutorUri(CucumberJsTestExecutor.ExecutorUriString)]
     [FileExtension(".cucumber")]
     public class CucumberJsTestDiscoverer : ITestDiscoverer
     {
-        public static IEnumerable<TestCase> GetTests(IEnumerable<string> sourceFiles, ITestCaseDiscoverySink discoverySink, Microsoft.VisualStudio.TestPlatform.ObjectModel.Logging.IMessageLogger logger)
+        public static IEnumerable<TestCase> GetTests(IEnumerable<string> sourceFiles, ITestCaseDiscoverySink discoverySink, IMessageLogger logger)
         {
             var tests = new List<TestCase>();
 
@@ -26,14 +27,14 @@
                 {
                     using (var reader = File.OpenText(s))
                     {
-                        logger?.SendMessage(Microsoft.VisualStudio.TestPlatform.ObjectModel.Logging.TestMessageLevel.Informational, $"Parsing: {s}");
+                        logger?.SendMessage(TestMessageLevel.Informational, $"Parsing: {s}");
                         feature = parser.Parse(reader);
-                        logger?.SendMessage(Microsoft.VisualStudio.TestPlatform.ObjectModel.Logging.TestMessageLevel.Informational, $"Parsed: {s}");
+                        logger?.SendMessage(TestMessageLevel.Informational, $"Parsed: {s}");
                     }
 
                     foreach (var scenario in feature.ScenarioDefinitions)
                     {
-                        logger?.SendMessage(Microsoft.VisualStudio.TestPlatform.ObjectModel.Logging.TestMessageLevel.Error, $"Found scenario '{scenario.Name}' in '{feature.Name}'");
+                        logger?.SendMessage(TestMessageLevel.Error, $"Found scenario '{scenario.Name}' in '{feature.Name}'");
 
                         var testCase = new TestCase(feature.Name + "." + scenario.Name, CucumberJsTestExecutor.ExecutorUri, s)
                         {
@@ -51,7 +52,7 @@
                 }
                 catch (Exception e)
                 {
-                    logger?.SendMessage(Microsoft.VisualStudio.TestPlatform.ObjectModel.Logging.TestMessageLevel.Error, $"Error parsing '{s}': {e.Message} {e.StackTrace}");
+                    logger?.SendMessage(TestMessageLevel.Error, $"Error parsing '{s}': {e.Message} {e.StackTrace}");
                 }
             });
 
@@ -61,7 +62,7 @@
         public void DiscoverTests(
             IEnumerable<string> sources,
             IDiscoveryContext discoveryContext,
-            Microsoft.VisualStudio.TestPlatform.ObjectModel.Logging.IMessageLogger logger,
+            IMessageLogger logger,
             ITestCaseDiscoverySink discoverySink)
         {
             GetTests(sources, discoverySink, logger);
