@@ -2,9 +2,11 @@
 {
     using System;
     using System.Collections.Generic;
+    using System.Diagnostics;
+    using System.IO;
     using Microsoft.VisualStudio.TestPlatform.ObjectModel;
     using Microsoft.VisualStudio.TestPlatform.ObjectModel.Adapter;
-    using Newtonsoft.Json.Linq;
+    using Newtonsoft.Json;
 
     [ExtensionUri(CucumberJsTestExecutor.ExecutorUriString)]
     public class CucumberJsTestExecutor : ITestExecutor
@@ -27,6 +29,12 @@
             this.RunTests(tests, runContext, frameworkHandle);
         }
 
+        /// <summary>
+        /// Runs the tests.
+        /// </summary>
+        /// <param name="tests">The tests.</param>
+        /// <param name="runContext">The run context.</param>
+        /// <param name="frameworkHandle">The framework handle.</param>
         public void RunTests(IEnumerable<TestCase> tests, IRunContext runContext, IFrameworkHandle frameworkHandle)
         {
             foreach (var test in tests)
@@ -36,92 +44,236 @@
                     return;
                 }
 
-                var result = new TestResult(test);
+                var testResult = new TestResult(test);
 
-                var target = System.IO.Path.ChangeExtension(test.Source, ".feature");
+                var target = Path.ChangeExtension(test.Source, ".feature");
 
                 try
                 {
-                    System.IO.File.Copy(test.Source, target);
+                    frameworkHandle.RecordStart(test);
 
-                    var appDataPath = Environment.GetEnvironmentVariable("APPDATA");
-                    var nodePath = System.IO.Path.Combine(appDataPath, "npm");
-                    var cucumberPath = System.IO.Path.Combine(nodePath, "node_modules\\cucumber\\bin\\cucumber.js");
-                    System.Diagnostics.ProcessStartInfo procStartInfo = runContext.IsBeingDebugged ?
-                        new System.Diagnostics.ProcessStartInfo("node", $"--debug=5858 \"{cucumberPath}\" \"{target}:{test.LineNumber}\" -f json") :
-                        new System.Diagnostics.ProcessStartInfo("node", $"\"{cucumberPath}\" \"{target}:{test.LineNumber}\" -f json");
+                    File.Copy(test.Source, target);
 
-                    // The following commands are needed to redirect the standard output.
-                    // This means that it will be redirected to the Process.StandardOutput StreamReader.
-                    procStartInfo.RedirectStandardOutput = true;
-                    procStartInfo.RedirectStandardError = true;
-                    procStartInfo.UseShellExecute = false;
-                    procStartInfo.CreateNoWindow = true;
-                    System.Diagnostics.Process proc = new System.Diagnostics.Process();
-                    proc.StartInfo = procStartInfo;
-                    proc.Start();
+                    string projectDirectory = GetProjectDirectory(test.Source);
+
+                    string cucumberJsFilePath = this.GetCucumberJsFilePath(projectDirectory);
+
+                    string nodeCommandLineArguments = runContext.IsBeingDebugged ?
+                        $"--debug=5858 \"{cucumberJsFilePath}\" \"{target}:{test.LineNumber}\" -f json" :
+                        $"\"{cucumberJsFilePath}\" \"{target}:{test.LineNumber}\" -f json";
+
+                    Process process = this.StartProcess("node", nodeCommandLineArguments, workingDirectory: projectDirectory);
 
                     if (runContext.IsBeingDebugged)
                     {
-                        DteHelpers.DebugAttachToNode(proc.Id, 5678);
+                        DteHelpers.DebugAttachToNode(process.Id, 5678);
                     }
 
-                    proc.WaitForExit();
-                    var error = proc.StandardError.ReadToEnd();
-                    var output = proc.StandardOutput.ReadToEnd();
+                    string jsonResult = WaitForProcessToExitAndVerifyOutputIsValid(process, testResult);
 
-                    var features = JArray.Parse(output);
+                    var results = JsonConvert.DeserializeObject<List<CucumberJsResult>>(jsonResult);
+                    var duration = 0L;
+                    List<string> testResultOutputMessages = new List<string>();
+                    List<string> testResultErrorMessages = new List<string>();
+                    List<string> testResultErrorStackTrace = new List<string>();
+                    TestOutcome testOutcome = TestOutcome.Passed;
 
-                    // frameworkHandle.SendMessage(Microsoft.VisualStudio.TestPlatform.ObjectModel.Logging.TestMessageLevel.Informational, output);
-                    foreach (var feature in features)
+                    foreach (var feature in results)
                     {
-                        frameworkHandle.SendMessage(Microsoft.VisualStudio.TestPlatform.ObjectModel.Logging.TestMessageLevel.Informational, $"{feature["keyword"]}: {feature["name"]}");
+                        testResultOutputMessages.Add($"{feature.Keyword}: {feature.Name}");
 
-                        foreach (var element in feature["elements"])
+                        foreach (var element in feature.Elements)
                         {
-                            frameworkHandle.SendMessage(Microsoft.VisualStudio.TestPlatform.ObjectModel.Logging.TestMessageLevel.Informational, $"{element["keyword"]}: {element["name"]}");
-                            frameworkHandle.SendMessage(Microsoft.VisualStudio.TestPlatform.ObjectModel.Logging.TestMessageLevel.Informational, $"{element["description"]}");
+                            testResultOutputMessages.Add($"{element.Keyword}: {element.Name}");
 
-                            bool passed = true;
-                            var duration = 0L;
-                            foreach (var step in element["steps"])
+                            string description = element.Description;
+
+                            if (!string.IsNullOrEmpty(description))
                             {
-                                var message = $"{step["keyword"]}{step["name"]}";
-                                duration = duration + (long)step["result"]["duration"];
-                                frameworkHandle.SendMessage(Microsoft.VisualStudio.TestPlatform.ObjectModel.Logging.TestMessageLevel.Informational, message);
-                                if ((string)step["result"]["status"] == "failed")
+                                testResultOutputMessages.Add(description);
+                            }
+
+                            foreach (var step in element.Steps)
+                            {
+                                string keyword = step.Keyword;
+                                string name = step.Name;
+
+                                var message = $"{keyword}{name}";
+                                testResultOutputMessages.Add(message);
+
+                                var stepResult = step.Result;
+
+                                duration += stepResult.Duration;
+
+                                string status = stepResult.Status;
+
+                                if (status == "failed")
                                 {
-                                    result.ErrorMessage = (string)step["result"]["error_message"];
-                                    frameworkHandle.SendMessage(Microsoft.VisualStudio.TestPlatform.ObjectModel.Logging.TestMessageLevel.Informational, $"{result.ErrorMessage}");
-                                    passed = false;
+                                    testOutcome = TestOutcome.Failed;
+
+                                    string errorMessage = stepResult.ErrorMessage;
+                                    testResultErrorMessages.Add(errorMessage);
+                                    break;
+                                }
+                                else if (((status == "undefined") || (status == "skipped")) && (testOutcome == TestOutcome.Passed))
+                                {
+                                    // step was not found
+                                    testOutcome = TestOutcome.Skipped;
+
+                                    string errorMessage = $"Step definition '{keyword}{name}' not found.";
+                                    testResultErrorMessages.Add(errorMessage);
+
+                                    testResultErrorStackTrace.Add($"{feature.Uri}:{step.LineNumber}");
+                                    break;
                                 }
                             }
 
-                            result.Duration = TimeSpan.FromTicks(duration);
-
-                            if (passed)
+                            if (testOutcome != TestOutcome.Passed)
                             {
-                                result.Outcome = TestOutcome.Passed;
-                            }
-                            else
-                            {
-                                result.Outcome = TestOutcome.Failed;
+                                break;
                             }
                         }
+
+                        if (testOutcome != TestOutcome.Passed)
+                        {
+                            break;
+                        }
+                    }
+
+                    testResult.Duration = TimeSpan.FromTicks(duration);
+                    testResult.Outcome = testOutcome;
+
+                    if (testResultErrorMessages.Count > 0)
+                    {
+                        testResult.ErrorMessage = string.Join(Environment.NewLine, testResultErrorMessages);
+                    }
+
+                    if (testResultErrorStackTrace.Count > 0)
+                    {
+                        testResult.ErrorStackTrace = string.Join(Environment.NewLine, testResultErrorStackTrace);
+                    }
+
+                    if (testResultOutputMessages.Count > 0)
+                    {
+                        testResult.Messages.Add(new TestResultMessage(TestResultMessage.StandardOutCategory, string.Join(Environment.NewLine, testResultOutputMessages)));
+                        testResult.Messages.Add(new TestResultMessage(TestResultMessage.StandardOutCategory, Environment.NewLine));
+                    }
+
+                    if (testResultErrorMessages.Count > 0)
+                    {
+                        testResult.Messages.Add(new TestResultMessage(TestResultMessage.StandardOutCategory, string.Join(Environment.NewLine, testResultErrorMessages)));
+                        testResult.Messages.Add(new TestResultMessage(TestResultMessage.StandardErrorCategory, string.Join(Environment.NewLine, testResultErrorMessages)));
                     }
                 }
                 catch (Exception ex)
                 {
-                    result.Outcome = TestOutcome.Failed;
-                    result.ErrorMessage = ex.Message + ex.StackTrace;
+                    testResult.Outcome = TestOutcome.Failed;
+                    testResult.ErrorMessage = ex.ToString();
+                    testResult.ErrorStackTrace = ex.StackTrace;
                 }
                 finally
                 {
-                    System.IO.File.Delete(target);
+                    File.Delete(target);
                 }
 
-                frameworkHandle.RecordResult(result);
+                frameworkHandle.RecordResult(testResult);
             }
+        }
+
+        private string WaitForProcessToExitAndVerifyOutputIsValid(Process process, TestResult testResult)
+        {
+            process.WaitForExit();
+            var error = process.StandardError.ReadToEnd();
+            var output = process.StandardOutput.ReadToEnd();
+
+            if (string.IsNullOrEmpty(output))
+            {
+                string errorDetails = string.Join(Environment.NewLine,
+                    new[]
+                    {
+                        $"Exit Code: {process.ExitCode}",
+                        $"Error: {error}"
+                    });
+
+                throw new Exception($"Failed to run '{process.StartInfo.FileName} {process.StartInfo.Arguments}'.{Environment.NewLine}{errorDetails}");
+            }
+
+            testResult.Messages.Add(new TestResultMessage(TestResultMessage.StandardOutCategory, output));
+            testResult.Messages.Add(new TestResultMessage(TestResultMessage.StandardOutCategory, Environment.NewLine));
+
+            if (!string.IsNullOrEmpty(error))
+            {
+                testResult.Messages.Add(new TestResultMessage(TestResultMessage.StandardErrorCategory, error));
+                testResult.Messages.Add(new TestResultMessage(TestResultMessage.StandardErrorCategory, Environment.NewLine));
+            }
+
+            return output;
+        }
+
+        private string GetProjectDirectory(string testFilePath)
+        {
+            // Simulate running `npm prefix` because the following error occurs when trying to run it if the cucumber file is not in the root of the project:
+            // Error: Cannot find module '.\node_modules\npm\bin\npm-cli.js'
+
+            // Get the closest parent directory to contain a package.json file.
+            string testDirectory = Path.GetDirectoryName(testFilePath);
+            string projectDirectory = this.GetParentDirectoryWithFile(testDirectory, "package.json");
+            if (string.IsNullOrEmpty(projectDirectory))
+            {
+                throw new Exception($"Failed to find parent directory containing 'package.json' starting from '{testDirectory}'.");
+            }
+
+            return projectDirectory;
+        }
+
+        private string GetCucumberJsFilePath(string projectDirectory)
+        {
+            // get local/dev installation of cucumber relative to the test file
+            // otherwise cucumber will fail with the following error message:
+            // You appear to be executing an install of cucumber(most likely a global install)
+            // that is different from your local install(the one required in your support files).
+            // For cucumber to work, you need to execute the same install that is required in your support files.
+            // Please execute the locally installed version to run your tests.
+            return Path.Combine(projectDirectory, "node_modules", "cucumber", "bin", "cucumber.js");
+        }
+
+        private string GetParentDirectoryWithFile(string path, string fileName)
+        {
+            DirectoryInfo dir = new DirectoryInfo(path);
+            FileInfo[] files = dir.GetFiles(fileName, SearchOption.TopDirectoryOnly);
+            if (files.Length > 0)
+            {
+                return path;
+            }
+
+            if (string.IsNullOrEmpty(dir.Parent.FullName))
+            {
+                return null;
+            }
+
+            return GetParentDirectoryWithFile(dir.Parent.FullName, fileName);
+        }
+
+        private Process StartProcess(string fileName, string arguments, string workingDirectory = null)
+        {
+            ProcessStartInfo procStartInfo = new ProcessStartInfo(fileName, arguments);
+
+            if (!string.IsNullOrEmpty(workingDirectory))
+            {
+                procStartInfo.WorkingDirectory = workingDirectory;
+            }
+
+            // The following commands are needed to redirect the standard output and error.
+            // This means that it will be redirected to the Process.StandardOutput and Process.StandardError StreamReaders.
+            procStartInfo.RedirectStandardOutput = true;
+            procStartInfo.RedirectStandardError = true;
+            procStartInfo.UseShellExecute = false;
+            procStartInfo.CreateNoWindow = true;
+            Process proc = new Process();
+            proc.StartInfo = procStartInfo;
+            proc.Start();
+
+            return proc;
         }
     }
 }
